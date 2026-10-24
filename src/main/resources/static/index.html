@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<!--
+Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+Click nbfs://nbhost/SystemFileSystem/Templates/Other/html.html to edit this template
+-->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Empleados - PAPAS</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background-color: #121212; color: #ffffff; }
+        h1 { color: #ffffff; }
+        .container { display: flex; gap: 30px; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+        .form-card { flex: 1; }
+        .table-card { flex: 2; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #444; background: #2a2a2a; color: white; border-radius: 4px; }
+        button { background-color: #28a745; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        button:hover { opacity: 0.9; }
+        .btn-eliminar { background-color: #dc3545; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #333; padding: 10px; text-align: left; }
+        th { background-color: #0066cc; color: white; }
+        tr:nth-child(even) { background-color: #181818; }
+    </style>
+</head>
+<body>
+
+    <h1>Gestión de Empleados</h1>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span id="userBienvenida" style="margin-right: 15px; color: #aaa;"></span>
+            <button onclick="cerrarSesion()" style="background-color: #dc3545;">Cerrar Sesión</button>
+        </div>
+        <!-- Formulario de Registro -->
+        <div id="panelRegistroEmpleado" class="card form-card" style="display: none;">
+            <h2>Registrar Empleado</h2>
+            <form id="formEmpleado">
+                <div class="form-group">
+                    <label for="nombre">Nombre:</label>
+                    <input type="text" id="nombre" required placeholder="Ej. Pedro Pascal">
+                </div>
+                <div class="form-group">
+                    <label for="edad">Edad:</label>
+                    <input type="number" id="edad" required placeholder="Ej. 48">
+                </div>
+                <button id="btnGuardar" class="btn btn-success">Guardar Empleado</button>
+            </form>
+            <p id="mensaje" style="margin-top: 15px; font-weight: bold;"></p>
+        </div>
+
+        <!-- Tabla de Empleados -->
+        <div class="card table-card">
+            <h2>Lista de Empleados</h2>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <input type="text" id="inputBuscar" placeholder="🔍 Buscar empleado por nombre o categoría..." oninput="filtrarEmpleados()">
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nombre</th>
+                        <th>Edad</th>
+                        <th>Categoría</th>
+                        <th>Creado</th>      <!-- NUEVO -->
+                        <th>Actualizado</th> <!-- NUEVO -->
+                        <th id="thAccion">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaEmpleados">
+                    <!-- Filas dinámicas -->
+                </tbody>
+               
+            </table>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
+                    <button onclick="cambiarPagina(-1)" id="btnAnterior" style="background-color: #444;">⬅️ Anterior</button>
+                    <span id="infoPaginacion" style="color: #aaa; font-size: 14px;">Página 1</span>
+                    <button onclick="cambiarPagina(1)" id="btnSiguiente" style="background-color: #444;">Siguiente ➡️</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://localhost:8080/api/empleados";
+        let idEmpleadoEditando = null;
+        let listaEmpleadosGlobal = []; // <--- NUEVO: Almacenará la lista original
+        let paginaActual = 1;
+        const registrosPorPagina = 5; // Puedes cambiar cuántos empleados quieres ver por página
+        let empleadosParaMostrar = []; // Lista temporal que se está filtrando o mostrando
+ 
+        function cerrarSesion(){
+            localStorage.removeItem("usuarioPapas");
+            window.location.href="login.html";
+        }
+        
+        document.addEventListener("DOMContentLoaded",()=>{
+            const usuarioSesionRaw = localStorage.getItem("usuarioPapas");
+            if (!usuarioSesionRaw) {
+                window.location.href = "login.html";
+                return;
+            }
+            const usuarioSesion = JSON.parse(usuarioSesionRaw);
+            const userElement = document.getElementById("userBienvenida");
+            
+            if (userElement && usuarioSesion){
+                userElement.textContent=`Hola, ${usuarioSesion.nombre} ,con el rol de: (${usuarioSesion.rol})`;        
+           }
+            gestionarPermisosPorRol(usuarioSesion.rol);
+            obtenerEmpleados();
+        });
+        
+
+        // Función GET: Obtiene la lista y dibuja la tabla con los botones
+        function obtenerEmpleados() {
+            const usuarioSesion = JSON.parse(localStorage.getItem("usuarioPapas"));
+            const esAdmin = usuarioSesion && usuarioSesion.rol === "admin";
+            
+            fetch(API_URL)
+                .then(res => res.json())
+                .then(data => {
+                    listaEmpleadosGlobal = data; // Guardamos los datos originales
+                    dibujarTabla(listaEmpleadosGlobal); // Dibujamos la tabla completa
+                })
+                .catch(err => console.error("Error al obtener empleados:", err));
+        
+        }
+
+        // Función POST: Registra nuevo empleado
+        document.getElementById("formEmpleado").addEventListener("submit", function(e) {
+            e.preventDefault();
+
+            const nuevoEmpleado = {
+                nombre: document.getElementById("nombre").value,
+                edad: parseInt(document.getElementById("edad").value),
+                id: idEmpleadoEditando ||  0
+            };
+            const esEdicion=idEmpleadoEditando!==null;
+            const urlFinal=esEdicion ? `${API_URL}/actualizar/${idEmpleadoEditando}` : `${API_URL}/registrar`;
+            const metodoHttp=esEdicion ? "PUT" :"POST";
+            
+            fetch(urlFinal,{
+                method: metodoHttp,
+                headers:{"Content-type":"Application/json"},
+                body:JSON.stringify(nuevoEmpleado)
+            })
+            .then(res=>{
+                if (res.ok){
+                    document.getElementById("mensaje").style.color="#28a745";
+                    document.getElementById("mensaje").textContent=esEdicion ? "¡Empleado actualizado con éxito!" : "¡Empleado registrado con éxito!";
+                    // Limpiamos y reseteamos el estado de edición
+                    document.getElementById("formEmpleado").reset();
+                    restaurarFormularioRegistro();
+                    obtenerEmpleados();
+                }else{
+                    document.getElementById("mensaje").style.color="#dc3545";
+                    document.getElementById("mensaje").textContent="Error al procesar la operacion de la base de datos";
+                    
+                }
+            })
+            .catch(err=>{
+                console.error("error de red",err);
+                document.getElementById("mensaje").style.color="#dc3545";
+                document.getElementById("mensaje").textContent="error de conexion"; 
+            });  
+        });
+
+        // Función DELETE: Elimina registro por ID
+        function eliminarEmpleado(id) {
+            if (!confirm(`¿Estás seguro de eliminar al empleado con ID ${id}?`)) {
+                return;
+            }
+
+            fetch(`${API_URL}/eliminar/${id}`, {
+                method: "DELETE"
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === "success") {
+                    obtenerEmpleados();
+                } else {
+                    alert("Error: " + data.message);
+                }
+            })
+            .catch(err => console.error("Error al eliminar:", err));
+        }
+        
+        function gestionarPermisosPorRol(rol){
+            const panelRegistro=document.querySelector(".card:has(#nombre)");
+            
+            if (rol==="admin"){
+                if (panelRegistro) panelRegistro.style.display="block";
+            }else{
+                if (panelRegistro) panelRegistro.style.display="none";
+            }
+        }
+        function cargarDatosEdicion(id, nombre, edad){
+            idEmpleadoEditando=id;
+            
+            document.getElementById("nombre").value=nombre;
+            document.getElementById("edad").value=edad;
+            
+            document.getElementById("btnGuardar").textContent="Actualizar empleado";
+            document.getElementById("btnGuardar").style.backgroundColor="#ffc107";
+            document.getElementById("btnGuardar").style.color="black";
+        }
+        function restaurarFormularioRegistro() {
+            idEmpleadoEditando = null;
+            const btn = document.getElementById("btnGuardar");
+            btn.textContent = "Guardar Empleado";
+            btn.style.backgroundColor = "#28a745";
+            btn.style.color = "white";
+        }
+        function dibujarTabla(data) {
+            empleadosParaMostrar = data; 
+            const totalPaginas = Math.ceil(data.length / registrosPorPagina) || 1;
+
+            if (paginaActual > totalPaginas) paginaActual = totalPaginas;
+            if (paginaActual < 1) paginaActual = 1;
+
+            const inicio = (paginaActual - 1) * registrosPorPagina;
+            const fin = inicio + registrosPorPagina;
+            const datosPagina = data.slice(inicio, fin);
+
+            const usuarioSesion = JSON.parse(localStorage.getItem("usuarioPapas"));
+            const esAdmin = usuarioSesion && usuarioSesion.rol === "admin";
+
+            // NUEVO: Ocultar o mostrar el encabezado "Acción" completo
+            const thAccion = document.getElementById("thAccion");
+            if (thAccion) {
+                thAccion.style.display = esAdmin ? "" : "none";
+            }
+
+            const tbody = document.getElementById("tablaEmpleados");
+            tbody.innerHTML = "";
+
+            datosPagina.forEach(emp => {
+                // NUEVO: Si es admin muestra los botones, si es user no genera la celda de acción
+                let columnaAccion = esAdmin 
+                ? `<td>
+                        <button class="btn-editar" onclick="cargarDatosEdicion(${emp.id}, '${emp.nombre}',${emp.edad})" style="background-color: #ffc107; color: black; margin-right: 5px;">Editar</button>
+                        <button class="btn-eliminar" onclick="eliminarEmpleado(${emp.id})">Eliminar</button>
+                   </td>`
+                : ``; // Si es user, la celda queda totalmente vacía
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${emp.id}</td>
+                        <td>${emp.nombre}</td>
+                        <td>${emp.edad}</td>
+                        <td><strong>${emp.categoria || 'N/A'}</strong></td>
+                        <td style="font-size: 11px; color: #aaa;">${emp.fechaCreacion || '-'}</td>
+                        <td style="font-size: 11px; color: #aaa;">${emp.fechaActualizacion || '-'}</td>
+                        ${columnaAccion}
+                    </tr>
+                `;
+            });
+
+            document.getElementById("infoPaginacion").textContent = `Página ${paginaActual} de ${totalPaginas} (Total: ${data.length} registros)`;
+            document.getElementById("btnAnterior").disabled = paginaActual === 1;
+            document.getElementById("btnSiguiente").disabled = paginaActual >= totalPaginas;
+        }
+        
+        function cambiarPagina(direccion){
+            paginaActual+=direccion;
+            dibujarTabla(empleadosParaMostrar);
+        }
+        function filtrarEmpleados(){
+            const textoFiltro=document.getElementById("inputBuscar").value.toLowerCase();
+            const empleadosFiltrados=listaEmpleadosGlobal.filter(emp=>{
+                const nombreMatch=emp.nombre.toLowerCase().includes(textoFiltro);
+                const categoriaMatch=(emp.categoria||"").toLowerCase().includes(textoFiltro);
+                return nombreMatch||categoriaMatch;
+            });
+            paginaActual = 1; // Volver a la primera página al buscar
+            dibujarTabla(empleadosFiltrados);
+        }
+    </script>
+</body>
+</html>
